@@ -440,6 +440,51 @@
   }
   .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--orange); animation: pulse 2s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* ─── MODAL CONTRASEÑA ─── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.75);
+    z-index: 50;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    width: 90%;
+    max-width: 360px;
+  }
+  .modal h3 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .modal p { font-size: 13px; color: var(--muted); margin-bottom: 1.25rem; }
+  .modal input {
+    width: 100%;
+    background: var(--bg4);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-family: 'Barlow', sans-serif;
+    font-size: 14px;
+    margin-bottom: 10px;
+  }
+  .modal input:focus { outline: none; border-color: var(--orange); }
+  .modal-error { font-size: 12px; color: #ef5350; margin-bottom: 10px; display: none; }
+  .modal-error.show { display: block; }
+  .modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
 </style>
 </head>
 <body>
@@ -464,7 +509,7 @@
 
 <div class="tabs">
   <button class="tab active" onclick="switchTab('ranking')">🏆 Ranking</button>
-  <button class="tab" onclick="switchTab('cargar')">＋ Cargar tiempo</button>
+  <button class="tab" onclick="pedirContrasena()">＋ Cargar tiempo</button>
 </div>
 
 <div class="main">
@@ -619,6 +664,21 @@
       </div>
     </div>
   </div>
+
+  <!-- ─── MODAL CONTRASEÑA ─── -->
+  <div id="modal-pass" class="modal-overlay" onclick="cerrarModal(event)">
+    <div class="modal">
+      <h3>🔒 Acceso profes</h3>
+      <p>Ingresá la contraseña para cargar tiempos.</p>
+      <input type="password" id="input-pass" placeholder="Contraseña" onkeydown="if(event.key==='Enter')verificarPass()">
+      <div id="pass-error" class="modal-error">Contraseña incorrecta. Intentá de nuevo.</div>
+      <div class="modal-btns">
+        <button class="btn-secondary" onclick="document.getElementById('modal-pass').classList.remove('show')">Cancelar</button>
+        <button class="btn-primary" onclick="verificarPass()">Ingresar</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -778,6 +838,32 @@ function guardarTiempo() {
 }
 
 render();
+
+function pedirContrasena() {
+  document.getElementById('input-pass').value = '';
+  document.getElementById('pass-error').classList.remove('show');
+  document.getElementById('modal-pass').classList.add('show');
+  setTimeout(() => document.getElementById('input-pass').focus(), 100);
+}
+
+function verificarPass() {
+  const val = document.getElementById('input-pass').value;
+  if (val === 'queganeelmejor') {
+    document.getElementById('modal-pass').classList.remove('show');
+    switchTab('cargar');
+  } else {
+    document.getElementById('pass-error').classList.add('show');
+    document.getElementById('input-pass').value = '';
+    document.getElementById('input-pass').focus();
+  }
+}
+
+function cerrarModal(e) {
+  if (e.target.id === 'modal-pass') {
+    document.getElementById('modal-pass').classList.remove('show');
+  }
+}
+
 </script>
 </body>
 </html>
