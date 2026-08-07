@@ -730,6 +730,14 @@ function distanciaLev(a, b) {
   }
   return fila[n];
 }
+function prefijoComun(a, b) { let i=0; while(i<a.length && i<b.length && a[i]===b[i]) i++; return i; }
+function esApodo(nn, ne) {
+  const a=nn.split(' '), b=ne.split(' ');
+  if (a.length<2 || b.length<2) return false;
+  if (a[a.length-1] !== b[b.length-1]) return false;
+  return prefijoComun(a[0], b[0]) >= 3;
+}
+
 function buscarParecido(nombre) {
   const nn = normalizar(nombre);
   const existentes = [...new Set(datos.map(d=>d.nombre))];
@@ -741,7 +749,8 @@ function buscarParecido(nombre) {
     const contiene = (' '+ne+' ').includes(' '+nn+' ') || (' '+nn+' ').includes(' '+ne+' ');
     // error de tipeo: distancia de edición chica
     const tipeo = nn.length >= 5 && distanciaLev(nn, ne) <= 2;
-    if (!parecido && (contiene || tipeo)) parecido = e;
+    const apodo = esApodo(nn, ne);
+    if (!parecido && (contiene || tipeo || apodo)) parecido = e;
   }
   return { exacto, parecido };
 }
