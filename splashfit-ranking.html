@@ -70,8 +70,8 @@
   .podio-bar { width: 100%; height: 3px; border-radius: 3px; margin-top: 10px; }
   .gold .podio-bar { background: var(--gold); } .silver .podio-bar { background: var(--silver); } .bronze .podio-bar { background: var(--bronze); }
 
-  .table-wrap { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 1.5rem; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .table-wrap { background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 1.5rem; }
+  table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 13px; }
   thead tr { background: var(--bg4); }
   th { padding: 10px 12px; font-family: 'Barlow Condensed', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); text-align: left; border-bottom: 1px solid var(--border); }
   td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
@@ -351,6 +351,21 @@ const POS_CLASS = ['pos-1','pos-2','pos-3'];
 
 let datos = [];
 let rolActual = null; // null=socio, 'profe', 'admin'
+// ─── SESIÓN GUARDADA (dura 12 horas) ───
+const SESION_HORAS = 12;
+(function restaurarSesion(){
+  try {
+    const s = JSON.parse(localStorage.getItem('splash-sesion'));
+    if (s && s.rol && (Date.now() - s.desde) < SESION_HORAS*60*60*1000) {
+      rolActual = s.rol;
+    } else {
+      localStorage.removeItem('splash-sesion');
+    }
+  } catch(e) {}
+})();
+function guardarSesion(rol) {
+  try { localStorage.setItem('splash-sesion', JSON.stringify({rol: rol, desde: Date.now()})); } catch(e) {}
+}
 
 function cap(s) {
   if (!s) return '';
@@ -420,6 +435,7 @@ function switchTab(tab) {
 
 // ─── CONTRASEÑA ───
 function pedirContrasena() {
+  if (rolActual) { switchTab('cargar'); return; }
   document.getElementById('input-pass').value='';
   document.getElementById('pass-error').classList.remove('show');
   document.getElementById('modal-pass').classList.add('show');
@@ -429,12 +445,14 @@ function verificarPass() {
   const val = document.getElementById('input-pass').value;
   if (val===PASS_ADMIN) {
     rolActual='admin';
+    guardarSesion('admin');
     document.getElementById('modal-pass').classList.remove('show');
     
     switchTab('cargar');
     showToast('Acceso admin activado ✓');
   } else if (val===PASS_PROFE) {
     rolActual='profe';
+    guardarSesion('profe');
     document.getElementById('modal-pass').classList.remove('show');
     switchTab('cargar');
   } else {
