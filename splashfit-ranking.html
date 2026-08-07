@@ -234,19 +234,10 @@
       <div id="podio-title" class="section-title">Podio</div>
       <div class="podio" id="podio-section"></div>
       <div class="section-title">Tiempos</div>
+      <div id="modo-ranking" style="font-size:12px;color:var(--muted);margin-bottom:8px"></div>
       <div class="table-wrap">
         <table>
-          <thead><tr>
-            <th style="width:36px">#</th>
-            <th>Nadador/a</th>
-            <th>Cat.</th>
-            <th>Turno</th>
-            <th>Profe</th>
-            <th>Estilo</th>
-            <th>Dist.</th>
-            <th>Tiempo</th>
-            <th id="th-del"></th>
-          </tr></thead>
+          <thead id="tabla-head"></thead>
           <tbody id="tabla"></tbody>
         </table>
       </div>
@@ -257,6 +248,7 @@
   <div id="section-cargar" class="section">
     <div class="form-card">
       <h2>Cargar nuevo tiempo</h2>
+      <p style="margin:-6px 0 14px"><a href="#" onclick="cambiarAcceso(); return false;" style="font-size:12px;color:var(--muted);text-decoration:underline">Cambiar acceso (poner otra contraseña)</a></p>
       <div class="form-grid">
         <div class="form-group">
           <label>Nombre y apellido</label>
@@ -264,6 +256,7 @@
             <input type="text" id="n-nombre" placeholder="Ej: Luciana Oviedo" oninput="autocomplete()" autocomplete="off">
             <div class="autocomplete-list" id="autocomplete-list" style="display:none"></div>
           </div>
+          <div id="historial-nadador" style="display:none;font-size:12px;color:var(--muted);background:var(--bg4);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-top:6px;line-height:1.8"></div>
         </div>
         <div class="form-group"><label>Turno</label>
           <select id="n-turno">
@@ -328,6 +321,29 @@
   </div>
 </div>
 
+<!-- Modal quién sos -->
+<div id="modal-profe" class="modal-overlay">
+  <div class="modal">
+    <h3>¿Quién sos?</h3>
+    <p>Elegí tu nombre para que la app recuerde a tus alumnos.</p>
+    <select id="select-quien" style="width:100%;background:var(--bg4);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:6px;font-size:14px;margin-bottom:14px">
+      <option value="FER BRITOS">Fer Britos</option>
+      <option value="Lisi">Lisi</option>
+      <option value="Sol">Sol</option>
+      <option value="Fede">Fede</option>
+      <option value="Luis">Luis</option>
+      <option value="Pame">Pame</option>
+      <option value="Romi">Romi</option>
+      <option value="Luciana">Luciana</option>
+      <option value="Lula">Lula</option>
+      <option value="Leo">Leo</option>
+    </select>
+    <div class="modal-btns">
+      <button class="btn-primary" onclick="confirmarQuien()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal contraseña -->
 <div id="modal-pass" class="modal-overlay" onclick="cerrarModal(event)">
   <div class="modal">
@@ -351,6 +367,7 @@ const POS_CLASS = ['pos-1','pos-2','pos-3'];
 
 let datos = [];
 let rolActual = null; // null=socio, 'profe', 'admin'
+let profeActual = null; // nombre del profe que inicio sesion
 // ─── SESIÓN GUARDADA (dura 12 horas) ───
 const SESION_HORAS = 12;
 (function restaurarSesion(){
@@ -358,13 +375,14 @@ const SESION_HORAS = 12;
     const s = JSON.parse(localStorage.getItem('splash-sesion'));
     if (s && s.rol && (Date.now() - s.desde) < SESION_HORAS*60*60*1000) {
       rolActual = s.rol;
+      profeActual = s.profe || null;
     } else {
       localStorage.removeItem('splash-sesion');
     }
   } catch(e) {}
 })();
 function guardarSesion(rol) {
-  try { localStorage.setItem('splash-sesion', JSON.stringify({rol: rol, desde: Date.now()})); } catch(e) {}
+  try { localStorage.setItem('splash-sesion', JSON.stringify({rol: rol, profe: profeActual, desde: Date.now()})); } catch(e) {}
 }
 
 function cap(s) {
@@ -422,6 +440,56 @@ const datosLocales = [
   {id:17,nombre:'LUPE SANCHEZ',turno:'Tarde',cat:'45 A 50',profe:'Lisi',estilo:'CROL',dist:'50m',tiempo:"53.1"},
 ];
 
+// ─── PUNTAJE Y TIEMPOS ───
+const PUNTOS = [10,8,6,5,4,3,2]; // 1°..7°; del 8° en adelante: 1 punto
+
+function tiempoASegundos(t) {
+  if (t === null || t === undefined || t === '') return Infinity;
+  let s = String(t).trim().replace(',', '.');
+  if (s.includes(':')) {
+    const p = s.split(':');
+    const min = parseFloat(p[0]) || 0;
+    const seg = parseFloat(p[1]) || 0;
+    return min * 60 + seg;
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? Infinity : n;
+}
+
+// Mejor tiempo de cada nadador en cada prueba (categoría+estilo+distancia)
+// y reparto de puntos según posición dentro de la prueba.
+function mejoresConPuntos() {
+  const mejores = {};
+  datos.forEach(d => {
+    const k = d.nombre + '|' + d.cat + '|' + d.estilo + '|' + d.dist;
+    const seg = tiempoASegundos(d.tiempo);
+    if (seg === Infinity) return;
+    if (!mejores[k] || seg < mejores[k].seg) mejores[k] = Object.assign({}, d, {seg: seg});
+  });
+  const pruebas = {};
+  Object.values(mejores).forEach(m => {
+    const k = m.cat + '|' + m.estilo + '|' + m.dist;
+    (pruebas[k] = pruebas[k] || []).push(m);
+  });
+  const res = [];
+  Object.values(pruebas).forEach(lista => {
+    lista.sort((a,b) => a.seg - b.seg);
+    lista.forEach((m,i) => { m.pos = i+1; m.puntos = PUNTOS[i] || 1; res.push(m); });
+  });
+  return res;
+}
+
+function pasaFiltros(d) {
+  const turno=document.getElementById('f-turno').value;
+  const cat=document.getElementById('f-cat').value;
+  const estilo=document.getElementById('f-estilo').value;
+  const dist=document.getElementById('f-dist').value;
+  const profe=document.getElementById('f-profe').value;
+  return (!turno||d.turno===turno)&&(!cat||d.cat===cat)&&
+    (!estilo||d.estilo===estilo)&&(!dist||d.dist===dist)&&
+    (!profe||d.profe===profe);
+}
+
 // ─── TABS ───
 function switchTab(tab) {
   ['ranking','cargar'].forEach(t => {
@@ -434,8 +502,27 @@ function switchTab(tab) {
 }
 
 // ─── CONTRASEÑA ───
+function confirmarQuien() {
+  profeActual = document.getElementById('select-quien').value;
+  guardarSesion(rolActual);
+  document.getElementById('modal-profe').classList.remove('show');
+  document.getElementById('n-profe').value = profeActual;
+  switchTab('cargar');
+  showToast('Hola ' + cap(profeActual) + '! Tus alumnos aparecen primero al escribir un nombre.');
+}
+function cambiarAcceso() {
+  rolActual = null;
+  profeActual = null;
+  try { localStorage.removeItem('splash-sesion'); } catch(e) {}
+  switchTab('ranking');
+  pedirContrasena();
+}
 function pedirContrasena() {
-  if (rolActual) { switchTab('cargar'); return; }
+  if (rolActual) {
+    if (profeActual) document.getElementById('n-profe').value = profeActual;
+    switchTab('cargar');
+    return;
+  }
   document.getElementById('input-pass').value='';
   document.getElementById('pass-error').classList.remove('show');
   document.getElementById('modal-pass').classList.add('show');
@@ -452,9 +539,8 @@ function verificarPass() {
     showToast('Acceso admin activado ✓');
   } else if (val===PASS_PROFE) {
     rolActual='profe';
-    guardarSesion('profe');
     document.getElementById('modal-pass').classList.remove('show');
-    switchTab('cargar');
+    document.getElementById('modal-profe').classList.add('show');
   } else {
     document.getElementById('pass-error').classList.add('show');
     document.getElementById('input-pass').value='';
@@ -496,32 +582,76 @@ function render() {
     <div class="stat"><div class="stat-label">Turnos</div><div class="stat-value">${[...new Set(rows.map(r=>r.turno))].length}</div></div>
   `;
 
-  renderPodio(rows);
-
+  const estilo = document.getElementById('f-estilo').value;
+  const dist = document.getElementById('f-dist').value;
+  const modoTiempos = !!(estilo && dist);
+  const scored = mejoresConPuntos().filter(pasaFiltros);
+  const thead = document.getElementById('tabla-head');
   const tbody = document.getElementById('tabla');
-  const listaFinal = topFilter === '10' ? rows.slice(0,10) : rows;
-  if (!listaFinal.length) {
-    tbody.innerHTML='<tr><td colspan="9" class="no-results">Sin resultados para los filtros seleccionados.</td></tr>';
-    return;
-  }
-  tbody.innerHTML = listaFinal.map((d,i) => {
-    const historial = getHistorial(d.nombre, d.estilo, d.dist);
-    const tendencia = historial.length > 1 ? getTendencia(historial) : '';
-    return `<tr>
+  const modoLabel = document.getElementById('modo-ranking');
+
+  if (modoTiempos) {
+    // ── RANKING POR TIEMPOS (prueba concreta: estilo + distancia) ──
+    modoLabel.textContent = 'Ranking por tiempos · mejor tiempo de cada nadador/a, de más rápido a más lento';
+    const lista = scored.sort((a,b) => a.seg - b.seg);
+    const listaFinal = topFilter === '10' ? lista.slice(0,10) : lista;
+    renderPodio(listaFinal, true);
+    thead.innerHTML = `<tr>
+      <th style="width:36px">#</th><th>Nadador/a</th><th>Cat.</th><th>Turno</th>
+      <th>Profe</th><th>Estilo</th><th>Dist.</th><th>Tiempo</th><th id="th-del"></th>
+    </tr>`;
+    if (!listaFinal.length) {
+      tbody.innerHTML='<tr><td colspan="9" class="no-results">Sin resultados para los filtros seleccionados.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = listaFinal.map((d,i) => {
+      const historial = getHistorial(d.nombre, d.estilo, d.dist);
+      const tendencia = historial.length > 1 ? getTendencia(historial) : '';
+      return `<tr>
+        <td style="font-size:15px">${i<3?MEDALS[i]:`<span style="color:var(--muted);font-weight:500">${i+1}</span>`}</td>
+        <td style="font-weight:600">${cap(d.nombre)}${tendencia}</td>
+        <td style="font-size:11px;color:var(--muted)">${d.cat}</td>
+        <td style="font-size:11px;color:var(--muted)">${d.turno}</td>
+        <td style="font-size:11px;color:var(--muted)">${cap(d.profe)}</td>
+        <td><span class="badge badge-${d.estilo}">${cap(d.estilo)}</span></td>
+        <td style="font-size:11px;color:var(--muted)">${d.dist}</td>
+        <td class="time-cell">${d.tiempo}</td>
+        <td>${rolActual==='admin'?`<button class="btn-del" onclick="borrar(${d.id}, '${d.nombre}')" title="Borrar">🗑</button>`:''}</td>
+      </tr>`;
+    }).join('');
+  } else {
+    // ── RANKING GENERAL POR PUNTOS ──
+    modoLabel.textContent = 'Ranking general por puntos · suma de puntos de todas las pruebas (1°=10, 2°=8, 3°=6, 4°=5, 5°=4, 6°=3, 7°=2, resto=1). Elegí estilo y distancia para ver tiempos.';
+    const acc = {};
+    scored.forEach(m => {
+      const a = acc[m.nombre] = acc[m.nombre] || {nombre:m.nombre, cat:m.cat, turno:m.turno, profe:m.profe, puntos:0, pruebas:0, oros:0};
+      a.puntos += m.puntos; a.pruebas++; if (m.pos===1) a.oros++;
+    });
+    const lista = Object.values(acc).sort((a,b) => b.puntos - a.puntos || b.oros - a.oros || a.nombre.localeCompare(b.nombre));
+    const listaFinal = topFilter === '10' ? lista.slice(0,10) : lista;
+    renderPodio(listaFinal, false);
+    thead.innerHTML = `<tr>
+      <th style="width:36px">#</th><th>Nadador/a</th><th>Cat.</th><th>Turno</th>
+      <th>Profe</th><th>Pruebas</th><th>🥇</th><th>Puntos</th>
+    </tr>`;
+    if (!listaFinal.length) {
+      tbody.innerHTML='<tr><td colspan="8" class="no-results">Sin resultados para los filtros seleccionados.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = listaFinal.map((d,i) => `<tr>
       <td style="font-size:15px">${i<3?MEDALS[i]:`<span style="color:var(--muted);font-weight:500">${i+1}</span>`}</td>
-      <td style="font-weight:600">${cap(d.nombre)}${tendencia}</td>
+      <td style="font-weight:600">${cap(d.nombre)}</td>
       <td style="font-size:11px;color:var(--muted)">${d.cat}</td>
       <td style="font-size:11px;color:var(--muted)">${d.turno}</td>
       <td style="font-size:11px;color:var(--muted)">${cap(d.profe)}</td>
-      <td><span class="badge badge-${d.estilo}">${cap(d.estilo)}</span></td>
-      <td style="font-size:11px;color:var(--muted)">${d.dist}</td>
-      <td class="time-cell">${d.tiempo}</td>
-      <td>${rolActual==='admin'?`<button class="btn-del" onclick="borrar(${d.id}, '${d.nombre}')" title="Borrar">🗑</button>`:''}</td>
-    </tr>`;
-  }).join('');
+      <td style="font-size:11px;color:var(--muted)">${d.pruebas}</td>
+      <td style="font-size:11px">${d.oros||''}</td>
+      <td class="time-cell">${d.puntos}</td>
+    </tr>`).join('');
+  }
 }
 
-function renderPodio(rows) {
+function renderPodio(rows, modoTiempos) {
   const sec=document.getElementById('podio-section');
   const title=document.getElementById('podio-title');
   if (!rows.length){sec.innerHTML='';title.style.display='none';return;}
@@ -536,8 +666,8 @@ function renderPodio(rows) {
       <div class="podio-medal">${medals[i]}</div>
       <div class="podio-pos">${labels[i]}</div>
       <div class="podio-nombre">${cap(d.nombre)}</div>
-      <div class="podio-tiempo">${d.tiempo}</div>
-      <div class="podio-meta">${cap(d.estilo)} · ${d.dist}<br>${d.turno} · ${cap(d.profe)}</div>
+      <div class="podio-tiempo">${modoTiempos ? d.tiempo : d.puntos + ' pts'}</div>
+      <div class="podio-meta">${modoTiempos ? cap(d.estilo)+' · '+d.dist+'<br>'+d.turno+' · '+cap(d.profe) : d.pruebas+(d.pruebas===1?' prueba':' pruebas')+'<br>'+d.cat+' · '+d.turno}</div>
       <div class="podio-bar"></div>
     </div>
   `:`<div class="podio-card ${classes[i]}" style="opacity:.3">
@@ -547,8 +677,6 @@ function renderPodio(rows) {
       <div class="podio-bar"></div>
     </div>`).join('');
 }
-
-// ─── HISTORIAL Y TENDENCIA ───
 function getHistorial(nombre, estilo, dist) {
   return datos.filter(d => d.nombre===nombre.toUpperCase() && d.estilo===estilo && d.dist===dist)
     .sort((a,b) => new Date(a.fecha)-new Date(b.fecha));
@@ -563,14 +691,59 @@ function getTendencia(historial) {
 }
 
 // ─── AUTOCOMPLETE ───
+function normalizar(s) {
+  return String(s || '').toUpperCase().trim().replace(/\s+/g, ' ')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+function esAlumnoDe(nombre, profe) {
+  return datos.some(d => d.nombre === nombre && d.profe === profe);
+}
 function autocomplete() {
-  const val = document.getElementById('n-nombre').value.toUpperCase().trim();
+  const val = normalizar(document.getElementById('n-nombre').value);
   const list = document.getElementById('autocomplete-list');
   if (!val) { list.style.display='none'; return; }
-  const matches = [...new Set(datos.map(d=>d.nombre))].filter(n=>n.includes(val)).slice(0,5);
+  let matches = [...new Set(datos.map(d=>d.nombre))].filter(n => normalizar(n).includes(val));
+  if (profeActual) {
+    matches.sort((a,b) => (esAlumnoDe(b, profeActual)?1:0) - (esAlumnoDe(a, profeActual)?1:0));
+  }
+  matches = matches.slice(0,5);
   if (!matches.length) { list.style.display='none'; return; }
-  list.innerHTML = matches.map(n=>`<div class="autocomplete-item" onclick="seleccionarNadador('${n}')">${cap(n)}</div>`).join('');
+  list.innerHTML = matches.map(n=>{
+    const mio = profeActual && esAlumnoDe(n, profeActual);
+    return `<div class="autocomplete-item" onclick="seleccionarNadador('${n}')">${cap(n)}${mio?' <span style="color:var(--orange);font-size:11px">· tu alumno/a</span>':''}</div>`;
+  }).join('');
   list.style.display='';
+}
+
+// ── DETECCIÓN DE DUPLICADOS ──
+function distanciaLev(a, b) {
+  const m = a.length, n = b.length;
+  if (Math.abs(m-n) > 2) return 99;
+  const fila = Array.from({length:n+1}, (_,i)=>i);
+  for (let i=1; i<=m; i++) {
+    let prev = fila[0]; fila[0] = i;
+    for (let j=1; j<=n; j++) {
+      const tmp = fila[j];
+      fila[j] = Math.min(fila[j]+1, fila[j-1]+1, prev + (a[i-1]===b[j-1]?0:1));
+      prev = tmp;
+    }
+  }
+  return fila[n];
+}
+function buscarParecido(nombre) {
+  const nn = normalizar(nombre);
+  const existentes = [...new Set(datos.map(d=>d.nombre))];
+  let exacto = null, parecido = null;
+  for (const e of existentes) {
+    const ne = normalizar(e);
+    if (ne === nn) { exacto = e; break; }
+    // uno contiene al otro como palabra completa (ej: "LUPE" vs "LUPE SANCHEZ")
+    const contiene = (' '+ne+' ').includes(' '+nn+' ') || (' '+nn+' ').includes(' '+ne+' ');
+    // error de tipeo: distancia de edición chica
+    const tipeo = nn.length >= 5 && distanciaLev(nn, ne) <= 2;
+    if (!parecido && (contiene || tipeo)) parecido = e;
+  }
+  return { exacto, parecido };
 }
 function seleccionarNadador(nombre) {
   document.getElementById('n-nombre').value = cap(nombre);
@@ -581,13 +754,44 @@ function seleccionarNadador(nombre) {
     document.getElementById('n-cat').value = ultimo.cat;
     document.getElementById('n-profe').value = ultimo.profe;
   }
+  mostrarHistorialNadador(nombre);
+}
+function mostrarHistorialNadador(nombre) {
+  const box = document.getElementById('historial-nadador');
+  if (!box) return;
+  const suyos = datos.filter(d => d.nombre === nombre);
+  if (!suyos.length) { box.style.display='none'; box.innerHTML=''; return; }
+  // mejor tiempo por estilo+distancia
+  const mejores = {};
+  suyos.forEach(d => {
+    const k = d.estilo + ' ' + d.dist;
+    const seg = tiempoASegundos(d.tiempo);
+    if (!mejores[k] || seg < mejores[k].seg) mejores[k] = {tiempo: d.tiempo, seg: seg};
+  });
+  const filas = Object.entries(mejores)
+    .map(([prueba, m]) => `<span style="white-space:nowrap">${cap(prueba)}: <b style="color:var(--orange)">${m.tiempo}</b></span>`)
+    .join(' &nbsp;·&nbsp; ');
+  box.innerHTML = '<b>Mejores tiempos de ' + cap(nombre) + ':</b><br>' + filas;
+  box.style.display = '';
 }
 
 // ─── GUARDAR ───
 async function guardarTiempo() {
-  const nombre = document.getElementById('n-nombre').value.trim();
+  let nombre = document.getElementById('n-nombre').value.trim();
   const tiempo = document.getElementById('n-tiempo').value.trim();
   if (!nombre||!tiempo) { showToast('Completá el nombre y el tiempo.', true); return; }
+
+  // Control anti-duplicados: ¿ya existe este nadador con otra escritura?
+  const { exacto, parecido } = buscarParecido(nombre);
+  if (exacto) {
+    nombre = exacto; // misma persona escrita distinto (tildes, espacios): usar el nombre ya guardado
+  } else if (parecido) {
+    if (confirm('Ya existe "' + cap(parecido) + '" en el ranking.\n\n¿Es la misma persona? (Aceptar = guardar el tiempo para ' + cap(parecido) + ')')) {
+      nombre = parecido;
+    } else if (!confirm('¿Guardar entonces como nadador/a NUEVO/A con el nombre "' + cap(nombre) + '"?')) {
+      return; // el profe prefiere corregir el nombre
+    }
+  }
   const btn = document.getElementById('btn-guardar');
   btn.disabled=true; btn.textContent='Guardando...';
   try {
