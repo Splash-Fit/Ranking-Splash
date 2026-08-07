@@ -519,6 +519,10 @@ function cambiarAcceso() {
 }
 function pedirContrasena() {
   if (rolActual) {
+    if (rolActual === 'profe' && !profeActual) {
+      document.getElementById('modal-profe').classList.add('show');
+      return;
+    }
     if (profeActual) document.getElementById('n-profe').value = profeActual;
     switchTab('cargar');
     return;
